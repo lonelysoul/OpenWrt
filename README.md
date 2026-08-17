@@ -24,9 +24,10 @@
 
 本固件基于 OpenWrt 构建，并集成了多个优秀的开源项目。在此特别感谢以下项目的开发者及维护者：
 
-- [KDAE](https://github.com/QiuSimons/luci-app-dae)
+- [LUCI-KDAE](https://github.com/QiuSimons/luci-app-dae)
 - [KDAE](https://github.com/olicesx/dae)
-- [KixDNS](https://github.com/JohnsonRan/luci-app-kixdns)
+- [LUCI-KixDNS](https://github.com/JohnsonRan/luci-app-kixdns)
+- [KIXDNS](https://github.com/olicesx/kixdns)
 - [DDNS-GO](https://github.com/jeessy2/ddns-go)
 - [Argon](https://github.com/jerrykuku/luci-theme-argon)
 
