@@ -11,7 +11,7 @@
 - wireguard
 - openssh-sftp-server
 - luci
-	- dae
+	- kdae
 	- kixdns
 	- ddns-go
 	- statistics
