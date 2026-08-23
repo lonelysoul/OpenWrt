@@ -35,7 +35,6 @@ jobs:
           REPOS=(
             "QiuSimons/luci-app-honk"
             "QiuSimons/luci-app-dae"
-            "lonelysoul/OpenWrt"
           )
 
           # ==========================================================
