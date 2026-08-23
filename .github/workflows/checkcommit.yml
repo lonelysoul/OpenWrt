@@ -1,0 +1,195 @@
+name: Monitor GitHub Commits
+
+on:
+  schedule:
+    # 每 10 分钟检查一次
+    - cron: "*/10 * * * *"
+
+  # 允许在 GitHub Actions 页面手动运行
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout monitor repository
+        uses: actions/checkout@v4
+
+      - name: Check commits and send Telegram notification
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -e
+
+          mkdir -p .state
+
+          # ==========================================================
+          # 监控仓库
+          # ==========================================================
+
+          REPOS=(
+            "QiuSimons/luci-app-honk"
+            "QiuSimons/luci-app-dae"
+          )
+
+          # ==========================================================
+          # GitHub API
+          # ==========================================================
+
+          API="https://api.github.com/repos"
+
+          for REPO in "${REPOS[@]}"; do
+
+            echo "========================================"
+            echo "Checking: $REPO"
+            echo "========================================"
+
+            OWNER="${REPO%%/*}"
+            NAME="${REPO##*/}"
+
+            STATE_FILE=".state/${OWNER}_${NAME}.sha"
+
+            # 获取默认分支最新 Commit
+            RESPONSE=$(curl -fsSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "${API}/${REPO}/commits?per_page=20")
+
+            # 最新 Commit SHA
+            LATEST_SHA=$(echo "$RESPONSE" | jq -r '.[0].sha')
+
+            if [ -z "$LATEST_SHA" ] || [ "$LATEST_SHA" = "null" ]; then
+              echo "Failed to get latest commit for $REPO"
+              continue
+            fi
+
+            # 第一次运行
+            if [ ! -f "$STATE_FILE" ]; then
+
+              echo "$LATEST_SHA" > "$STATE_FILE"
+
+              echo "First run for $REPO"
+              echo "Current commit: $LATEST_SHA"
+              echo "No notification will be sent."
+
+              continue
+            fi
+
+            LAST_SHA=$(cat "$STATE_FILE")
+
+            # 没有更新
+            if [ "$LATEST_SHA" = "$LAST_SHA" ]; then
+              echo "No new commits."
+              continue
+            fi
+
+            echo "New commits detected!"
+            echo "Last:   $LAST_SHA"
+            echo "Latest: $LATEST_SHA"
+
+            # ========================================================
+            # 找出从旧 Commit 到最新 Commit 之间的新 Commit
+            # ========================================================
+
+            FOUND_LAST=false
+
+            echo "$RESPONSE" | jq -c '.[]' | tac | while read -r COMMIT; do
+
+              SHA=$(echo "$COMMIT" | jq -r '.sha')
+
+              # 到达上一次已经通知过的 Commit
+              if [ "$SHA" = "$LAST_SHA" ]; then
+                FOUND_LAST=true
+                continue
+              fi
+
+              # 如果没有找到旧 Commit，就继续处理当前列表
+              if [ "$FOUND_LAST" = "false" ] && [ "$SHA" != "$LATEST_SHA" ]; then
+                continue
+              fi
+
+              MESSAGE=$(echo "$COMMIT" | jq -r '.commit.message')
+              TITLE=$(echo "$MESSAGE" | head -n 1)
+
+              # Commit 正文
+              BODY=$(echo "$MESSAGE" | tail -n +2 | sed '/^[[:space:]]*$/d')
+
+              AUTHOR=$(echo "$COMMIT" | jq -r '
+                if .author.login != null
+                then .author.login
+                else .commit.author.name
+                end
+              ')
+
+              DATE=$(echo "$COMMIT" | jq -r '.commit.author.date')
+
+              SHORT_SHA="${SHA:0:7}"
+
+              URL="https://github.com/${REPO}/commit/${SHA}"
+
+              # ======================================================
+              # Telegram 消息
+              # ======================================================
+
+              TEXT="🔔 <b>GitHub Commit</b>
+
+              📦 <b>${NAME}</b>
+              👤 ${AUTHOR}
+              🕐 ${DATE}
+              🔑 <code>${SHORT_SHA}</code>
+
+              <b>${TITLE}</b>"
+
+              if [ -n "$BODY" ]; then
+                TEXT="${TEXT}
+
+              ${BODY}"
+              fi
+
+              TEXT="${TEXT}
+
+              🔗 <a href=\"${URL}\">查看 Commit</a>"
+
+              # 压缩连续空格，但保留换行
+              TEXT=$(printf '%s\n' "$TEXT" | sed 's/^[[:space:]]*//')
+
+              curl -fsSL \
+                -X POST \
+                "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                -d "chat_id=${TELEGRAM_CHAT_ID}" \
+                --data-urlencode "text=${TEXT}" \
+                -d "parse_mode=HTML" \
+                >/dev/null
+
+              echo "Notification sent: ${REPO} ${SHORT_SHA}"
+
+              # 如果只找到最新 Commit，则停止
+              if [ "$SHA" = "$LATEST_SHA" ]; then
+                break
+              fi
+
+            done
+
+            # 保存最新 Commit
+            echo "$LATEST_SHA" > "$STATE_FILE"
+
+          done
+
+      - name: Save commit state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add .state/
+
+          if git diff --cached --quiet; then
+            echo "No state changes."
+          else
+            git commit -m "chore: update commit monitor state"
+            git push
+          fi
