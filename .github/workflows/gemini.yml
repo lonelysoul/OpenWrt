@@ -24,16 +24,16 @@ jobs:
       # 2. 执行检测脚本并更新 last_commits.json
       - name: Check Repositories and Notify Telegram
         env:
-          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python3 -c '
           import os, json, urllib.request, urllib.parse
 
           REPOS = [
-              "openwrt/openwrt",
-              "immortalwrt/immortalwrt",
-              "coolsnowwolf/lede"
+              "QiuSimons/luci-app-honk",,
+              "QiuSimons/luci-app-dae",
+              "lonelysoul/OpenWrt"
           ]
 
           BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
