@@ -3,7 +3,7 @@ name: Monitor GitHub Commits
 on:
   schedule:
     # 每 15 分钟检查一次（时间启动范围：每天 1:00～15:45，共 16 个小时）
-    - cron: "*/15 1-15 * * *"
+    - cron: "7-59/15 1-15 * * *"
 
   workflow_dispatch:
 
