@@ -2,8 +2,8 @@ name: Monitor GitHub Commits
 
 on:
   schedule:
-    # 每 10 分钟检查一次
-    - cron: "*/15 1-15 * * *"
+    # 每 15 分钟检查一次
+    - cron: "*/15 0-15 * * *"
 
   # 允许在 GitHub Actions 页面手动运行
   workflow_dispatch:
