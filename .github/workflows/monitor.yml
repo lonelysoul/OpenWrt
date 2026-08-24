@@ -38,7 +38,7 @@ jobs:
           REPOS=(
             "QiuSimons/luci-app-honk"
             "QiuSimons/luci-app-dae"
-            "lonelysoul/OpenWrt"            
+            "lonelysoul/OpenWrt"
           )
 
           # ==========================================================
@@ -142,7 +142,7 @@ jobs:
               # ==========================================================
 
               TEXT="🔔 <b>GitHub Commit</b>
-
+                
                 📦 <b>${NAME}</b>
                 👤 ${AUTHOR}
                 🕐 ${DATE}
@@ -195,5 +195,5 @@ jobs:
             echo "✅ No state changes."
           else
             git commit -m "chore: update commit monitor state"
-            git push
+            git push || true
           fi
