@@ -2,11 +2,12 @@ name: Monitor GitHub Commits
 
 on:
   schedule:
-    # 每 15 分钟检查一次
+    # 每 15 分钟检查一次（时间启动范围：每天 1:00～15:45，共 16 个小时）
+    # 不要修改此行时间段！保持原样
     - cron: "*/15 1-15 * * *"
 
-  # 允许在 GitHub Actions 页面手动运行
   workflow_dispatch:
+    description: "手动触发一次 GitHub Commit 监控"
 
 permissions:
   contents: write
@@ -17,30 +18,32 @@ jobs:
 
     steps:
       - name: Checkout monitor repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
+        with:
+          # 保留 .state 目录，用于持久化 commit 状态
+          persist-credentials: false
+          clean: false
 
       - name: Check commits and send Telegram notification
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          set -e
+          set -euo pipefail
 
           mkdir -p .state
 
           # ==========================================================
-          # 监控仓库
+          # 监控仓库（可随时添加新仓库）
           # ==========================================================
-
           REPOS=(
             "QiuSimons/luci-app-honk"
             "QiuSimons/luci-app-dae"
           )
 
           # ==========================================================
-          # GitHub API
+          # GitHub API（带重试机制，防止偶尔 429/503）
           # ==========================================================
-
           API="https://api.github.com/repos"
 
           for REPO in "${REPOS[@]}"; do
@@ -54,8 +57,11 @@ jobs:
 
             STATE_FILE=".state/${OWNER}_${NAME}.sha"
 
-            # 获取默认分支最新 Commit
+            # 增加重试（最多重试 5 次，延迟 3s）
             RESPONSE=$(curl -fsSL \
+              --retry 5 \
+              --retry-delay 3 \
+              --retry-max-time 30 \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2026-03-10" \
               "${API}/${REPO}/commits?per_page=20")
@@ -64,7 +70,7 @@ jobs:
             LATEST_SHA=$(echo "$RESPONSE" | jq -r '.[0].sha')
 
             if [ -z "$LATEST_SHA" ] || [ "$LATEST_SHA" = "null" ]; then
-              echo "Failed to get latest commit for $REPO"
+              echo "❌ Failed to get latest commit for $REPO"
               continue
             fi
 
@@ -73,10 +79,11 @@ jobs:
 
               echo "$LATEST_SHA" > "$STATE_FILE"
 
-              echo "First run for $REPO"
+              echo "🟡 First run for $REPO"
               echo "Current commit: $LATEST_SHA"
               echo "No notification will be sent."
 
+              # 首次运行时不发送任何通知（符合原逻辑）
               continue
             fi
 
@@ -84,17 +91,17 @@ jobs:
 
             # 没有更新
             if [ "$LATEST_SHA" = "$LAST_SHA" ]; then
-              echo "No new commits."
+              echo "✅ No new commits."
               continue
             fi
 
-            echo "New commits detected!"
-            echo "Last:   $LAST_SHA"
+            echo "🔔 New commits detected!"
+            echo "Last: $LAST_SHA"
             echo "Latest: $LATEST_SHA"
 
-            # ========================================================
-            # 找出从旧 Commit 到最新 Commit 之间的新 Commit
-            # ========================================================
+            # ==========================================================
+            # 找出从旧 Commit 到最新 Commit 之间的新 Commit 并发送通知
+            # ==========================================================
 
             FOUND_LAST=false
 
@@ -102,13 +109,13 @@ jobs:
 
               SHA=$(echo "$COMMIT" | jq -r '.sha')
 
-              # 到达上一次已经通知过的 Commit
+              # 到达上一次已通知过的 Commit
               if [ "$SHA" = "$LAST_SHA" ]; then
                 FOUND_LAST=true
                 continue
               fi
 
-              # 如果没有找到旧 Commit，就继续处理当前列表
+              # 如果还没有找到旧 Commit，就继续跳过（只处理新 Commit）
               if [ "$FOUND_LAST" = "false" ] && [ "$SHA" != "$LATEST_SHA" ]; then
                 continue
               fi
@@ -116,7 +123,7 @@ jobs:
               MESSAGE=$(echo "$COMMIT" | jq -r '.commit.message')
               TITLE=$(echo "$MESSAGE" | head -n 1)
 
-              # Commit 正文
+              # Commit 正文（去掉空行）
               BODY=$(echo "$MESSAGE" | tail -n +2 | sed '/^[[:space:]]*$/d')
 
               AUTHOR=$(echo "$COMMIT" | jq -r '
@@ -127,33 +134,32 @@ jobs:
               ')
 
               DATE=$(echo "$COMMIT" | jq -r '.commit.author.date')
-
               SHORT_SHA="${SHA:0:7}"
 
               URL="https://github.com/${REPO}/commit/${SHA}"
 
-              # ======================================================
-              # Telegram 消息
-              # ======================================================
+              # ==========================================================
+              # Telegram 消息（支持 HTML，保留换行）
+              # ==========================================================
 
               TEXT="🔔 <b>GitHub Commit</b>
 
-              📦 <b>${NAME}</b>
-              👤 ${AUTHOR}
-              🕐 ${DATE}
-              🔑 <code>${SHORT_SHA}</code>
+📦 <b>${NAME}</b>
+👤 ${AUTHOR}
+🕐 ${DATE}
+🔑 <code>${SHORT_SHA}</code>
 
-              <b>${TITLE}</b>"
+<b>${TITLE}</b>"
 
               if [ -n "$BODY" ]; then
                 TEXT="${TEXT}
 
-              ${BODY}"
+${BODY}"
               fi
 
               TEXT="${TEXT}
 
-              🔗 <a href=\"${URL}\">查看 Commit</a>"
+🔗 <a href=\"${URL}\">查看 Commit</a>"
 
               # 压缩连续空格，但保留换行
               TEXT=$(printf '%s\n' "$TEXT" | sed 's/^[[:space:]]*//')
@@ -163,10 +169,9 @@ jobs:
                 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
                 -d "chat_id=${TELEGRAM_CHAT_ID}" \
                 --data-urlencode "text=${TEXT}" \
-                -d "parse_mode=HTML" \
-                >/dev/null
+                -d "parse_mode=HTML" >/dev/null
 
-              echo "Notification sent: ${REPO} ${SHORT_SHA}"
+              echo "✅ Notification sent: ${REPO} ${SHORT_SHA}"
 
               # 如果只找到最新 Commit，则停止
               if [ "$SHA" = "$LATEST_SHA" ]; then
@@ -188,7 +193,7 @@ jobs:
           git add .state/
 
           if git diff --cached --quiet; then
-            echo "No state changes."
+            echo "✅ No state changes."
           else
             git commit -m "chore: update commit monitor state"
             git push
