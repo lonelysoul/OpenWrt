@@ -14,7 +14,7 @@ jobs:
 
       # 1. 恢复最新的 Cache（优先匹配最新运行生成的动态 Key，匹配不到则兜底回退）
       - name: Restore last commit hashes cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: last_commits.json
           key: repo-monitor-${{ runner.os }}-${{ github.run_id }}
@@ -142,7 +142,7 @@ jobs:
 
       # 3. 将更新后的 last_commits.json 保存为本次运行独一无二的新 Cache Key
       - name: Save updated commit state to cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         if: always()
         with:
           path: last_commits.json
