@@ -3,7 +3,7 @@ name: Monitor GitHub Commits
 on:
   schedule:
     # 每 15 分钟检查一次（时间启动范围：每天 1:00～15:45，共 16 个小时）
-    # 不要修改此行时间段！保持原样
+    # 不要修改此行时间段！
     - cron: "*/15 1-15 * * *"
 
   workflow_dispatch:
@@ -20,7 +20,6 @@ jobs:
       - name: Checkout monitor repository
         uses: actions/checkout@v4
         with:
-          # 保留 .state 目录，用于持久化 commit 状态
           persist-credentials: false
           clean: false
 
@@ -83,7 +82,6 @@ jobs:
               echo "Current commit: $LATEST_SHA"
               echo "No notification will be sent."
 
-              # 首次运行时不发送任何通知（符合原逻辑）
               continue
             fi
 
@@ -115,7 +113,7 @@ jobs:
                 continue
               fi
 
-              # 如果还没有找到旧 Commit，就继续跳过（只处理新 Commit）
+              # 如果还没有找到旧 Commit，就继续跳过
               if [ "$FOUND_LAST" = "false" ] && [ "$SHA" != "$LATEST_SHA" ]; then
                 continue
               fi
@@ -144,22 +142,22 @@ jobs:
 
               TEXT="🔔 <b>GitHub Commit</b>
 
-📦 <b>${NAME}</b>
-👤 ${AUTHOR}
-🕐 ${DATE}
-🔑 <code>${SHORT_SHA}</code>
-
-<b>${TITLE}</b>"
+                📦 <b>${NAME}</b>
+                👤 ${AUTHOR}
+                🕐 ${DATE}
+                🔑 <code>${SHORT_SHA}</code>
+                
+                <b>${TITLE}</b>"
 
               if [ -n "$BODY" ]; then
                 TEXT="${TEXT}
 
-${BODY}"
+                ${BODY}"
               fi
 
               TEXT="${TEXT}
 
-🔗 <a href=\"${URL}\">查看 Commit</a>"
+                🔗 <a href=\"${URL}\">查看 Commit</a>"
 
               # 压缩连续空格，但保留换行
               TEXT=$(printf '%s\n' "$TEXT" | sed 's/^[[:space:]]*//')
