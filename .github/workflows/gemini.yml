@@ -26,9 +26,9 @@ jobs:
 
           # 1. 在这里配置你要监控的仓库列表 (格式: "所有者/仓库名")
           REPOS = [
-              "openwrt/openwrt",
-              "immortalwrt/immortalwrt",
-              "coolsnowwolf/lede"
+              "QiuSimons/luci-app-honk",
+              "QiuSimons/luci-app-dae",
+              "lonelysoul/OpenWrt"
           ]
 
           BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
