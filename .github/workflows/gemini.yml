@@ -2,47 +2,51 @@ name: Monitor Repositories
 
 on:
   schedule:
-    # 每 30 分钟运行一次（建议选择避开整点的偏移分钟数，如第 17 和 47 分钟，规避 GitHub 排队）
-    - cron: "*/15 * * * *"
-  workflow_dispatch: # 支持手动触发测试
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
 
 jobs:
   check-updates:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1. 恢复最新的 Cache（优先匹配最新运行生成的动态 Key，匹配不到则兜底回退）
       - name: Restore last commit hashes cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v4
         with:
           path: last_commits.json
-          key: repo-monitor-commits-state
+          key: repo-monitor-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            repo-monitor-${{ runner.os }}-
 
+      # 2. 执行检测脚本并更新 last_commits.json
       - name: Check Repositories and Notify Telegram
         env:
-          TG_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           python3 -c '
           import os, json, urllib.request, urllib.parse
 
-          # 1. 在这里配置你要监控的仓库列表 (格式: "所有者/仓库名")
           REPOS = [
-              "QiuSimons/luci-app-honk",
-              "QiuSimons/luci-app-dae",
-              "lonelysoul/OpenWrt"
+              "openwrt/openwrt",
+              "immortalwrt/immortalwrt",
+              "coolsnowwolf/lede"
           ]
 
           BOT_TOKEN = os.environ.get("TG_BOT_TOKEN")
           CHAT_ID = os.environ.get("TG_CHAT_ID")
           CACHE_FILE = "last_commits.json"
 
-          # 加载上次保存的 Commit 状态
           state = {}
           if os.path.exists(CACHE_FILE):
               try:
                   with open(CACHE_FILE, "r") as f:
                       state = json.load(f)
               except Exception as e:
-                  print(f"读取 Cache 失败，重新初始化: {e}")
+                  print(f"读取 Cache 失败: {e}")
 
           def send_tg_message(text):
               url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -59,10 +63,18 @@ jobs:
               except Exception as e:
                   print(f"发送 Telegram 消息失败: {e}")
 
+          def get_commit_detail(repo, sha):
+              url = f"https://api.github.com/repos/{repo}/commits/{sha}"
+              req = urllib.request.Request(url, headers={"User-Agent": "GitHub-Action-Monitor"})
+              try:
+                  with urllib.request.urlopen(req) as resp:
+                      return json.loads(resp.read().decode("utf-8"))
+              except Exception:
+                  return None
+
           new_state = state.copy()
 
           for repo in REPOS:
-              print(f"Checking {repo}...")
               api_url = f"https://api.github.com/repos/{repo}/commits?per_page=10"
               req = urllib.request.Request(api_url, headers={"User-Agent": "GitHub-Action-Monitor"})
               
@@ -70,7 +82,6 @@ jobs:
                   with urllib.request.urlopen(req) as resp:
                       commits = json.loads(resp.read().decode("utf-8"))
               except Exception as e:
-                  print(f"获取仓库 {repo} 失败: {e}")
                   continue
 
               if not commits:
@@ -79,13 +90,11 @@ jobs:
               latest_sha = commits[0]["sha"]
               last_seen_sha = state.get(repo)
 
-              # 首次运行：只记录最新 Commit，不推送历史消息（防止刷屏）
               if not last_seen_sha:
-                  print(f"首次初始化仓库 {repo}，记录最新 SHA: {latest_sha[:7]}")
+                  print(f"[{repo}] 首次初始化，保存最新 SHA: {latest_sha[:7]}")
                   new_state[repo] = latest_sha
                   continue
 
-              # 如果有新提交
               if latest_sha != last_seen_sha:
                   new_commits = []
                   for c in commits:
@@ -93,34 +102,48 @@ jobs:
                           break
                       new_commits.append(c)
 
-                  # 按时间正序排列（从旧到新推送）
                   new_commits.reverse()
 
                   for c in new_commits:
-                      msg_author = c["commit"]["author"]["name"]
-                      msg_text = c["commit"]["message"].strip().split("\n")[0] # 取第一行
-                      msg_url = c["html_url"]
-                      sha_short = c["sha"][:7]
+                      sha = c["sha"]
+                      detail = get_commit_detail(repo, sha)
+                      
+                      full_msg = c["commit"]["message"].strip()
+                      if len(full_msg) > 1000:
+                          full_msg = full_msg[:1000] + "\n...(内容过长已截断)"
+
+                      author = c["commit"]["author"]["name"]
+                      url = c["html_url"]
+                      sha_short = sha[:7]
+
+                      file_stats = ""
+                      if detail and "files" in detail:
+                          files = detail["files"]
+                          file_list = [f"- `{f['filename']}` ({f['status']})" for f in files[:5]]
+                          if len(files) > 5:
+                              file_list.append(f"- ... 等共 {len(files)} 个文件")
+                          file_stats = "\n📁 *修改文件*:\n" + "\n".join(file_list)
 
                       tg_text = (
                           f"🚀 *[{repo}]* 收到新 Commit\n\n"
-                          f"📝 *内容*: {msg_text}\n"
-                          f"👤 *作者*: `{msg_author}`\n"
-                          f"🔗 *Hash*: [{sha_short}]({msg_url})"
+                          f"👤 *作者*: `{author}`\n"
+                          f"🔗 *Hash*: [{sha_short}]({url})\n\n"
+                          f"📝 *完整 Commit 信息*:\n```\n{full_msg}\n```"
+                          f"{file_stats}"
                       )
                       send_tg_message(tg_text)
 
-                  # 更新该仓库最新的 SHA
                   new_state[repo] = latest_sha
 
-          # 保存最新状态，以便 actions/cache 写入
+          # 写入本地文件供后续 Save 步骤保存
           with open(CACHE_FILE, "w") as f:
               json.dump(new_state, f, indent=2)
           '
 
-      - name: Save commit state to cache
-        uses: actions/cache/save@v6
+      # 3. 将更新后的 last_commits.json 保存为本次运行独一无二的新 Cache Key
+      - name: Save updated commit state to cache
+        uses: actions/cache/save@v4
         if: always()
         with:
           path: last_commits.json
-          key: repo-monitor-commits-state-${{ github.run_id }}
+          key: repo-monitor-${{ runner.os }}-${{ github.run_id }}
