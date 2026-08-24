@@ -31,7 +31,7 @@ jobs:
           import os, json, urllib.request, urllib.parse
 
           REPOS = [
-              "QiuSimons/luci-app-honk",,
+              "QiuSimons/luci-app-honk",
               "QiuSimons/luci-app-dae",
               "lonelysoul/OpenWrt"
           ]
