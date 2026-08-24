@@ -3,11 +3,9 @@ name: Monitor GitHub Commits
 on:
   schedule:
     # 每 15 分钟检查一次（时间启动范围：每天 1:00～15:45，共 16 个小时）
-    # 不要修改此行时间段！
     - cron: "*/15 1-15 * * *"
 
   workflow_dispatch:
-    description: "手动触发一次 GitHub Commit 监控"
 
 permissions:
   contents: write
@@ -18,9 +16,10 @@ jobs:
 
     steps:
       - name: Checkout monitor repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          # 注意：必须设置为 true，否则下面 git push 会报 Auth 失败或权限不足
+          persist-credentials: true
           clean: false
 
       - name: Check commits and send Telegram notification
@@ -33,7 +32,7 @@ jobs:
           mkdir -p .state
 
           # ==========================================================
-          # 监控仓库（可随时添加新仓库）
+          # 监控仓库
           # ==========================================================
           REPOS=(
             "QiuSimons/luci-app-honk"
@@ -41,9 +40,6 @@ jobs:
             "lonelysoul/OpenWrt"
           )
 
-          # ==========================================================
-          # GitHub API（带重试机制，防止偶尔 429/503）
-          # ==========================================================
           API="https://api.github.com/repos"
 
           for REPO in "${REPOS[@]}"; do
@@ -57,13 +53,12 @@ jobs:
 
             STATE_FILE=".state/${OWNER}_${NAME}.sha"
 
-            # 增加重试（最多重试 5 次，延迟 3s）
             RESPONSE=$(curl -fsSL \
               --retry 5 \
               --retry-delay 3 \
               --retry-max-time 30 \
               -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2026-03-10" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
               "${API}/${REPO}/commits?per_page=20")
 
             # 最新 Commit SHA
@@ -74,15 +69,10 @@ jobs:
               continue
             fi
 
-            # 第一次运行
+            # 第一次运行：初始化，不发通知
             if [ ! -f "$STATE_FILE" ]; then
-
               echo "$LATEST_SHA" > "$STATE_FILE"
-
-              echo "🟡 First run for $REPO"
-              echo "Current commit: $LATEST_SHA"
-              echo "No notification will be sent."
-
+              echo "🟡 First run for $REPO. Current commit: $LATEST_SHA"
               continue
             fi
 
@@ -98,31 +88,27 @@ jobs:
             echo "Last: $LAST_SHA"
             echo "Latest: $LATEST_SHA"
 
-            # ==========================================================
-            # 找出从旧 Commit 到最新 Commit 之间的新 Commit 并发送通知
-            # ==========================================================
-
+            # 避免使用管道符 | 导致子 Shell 变量隔离，改用 Process Substitution
             FOUND_LAST=false
 
-            echo "$RESPONSE" | jq -c '.[]' | tac | while read -r COMMIT; do
+            while read -r COMMIT; do
+              [ -z "$COMMIT" ] && continue
 
               SHA=$(echo "$COMMIT" | jq -r '.sha')
 
-              # 到达上一次已通知过的 Commit
+              # 匹配到上一次已经推送过的 Commit
               if [ "$SHA" = "$LAST_SHA" ]; then
                 FOUND_LAST=true
                 continue
               fi
 
-              # 如果还没有找到旧 Commit，就继续跳过
+              # 未找到旧 Commit 且不等于最新 Commit 时跳过
               if [ "$FOUND_LAST" = "false" ] && [ "$SHA" != "$LATEST_SHA" ]; then
                 continue
               fi
 
               MESSAGE=$(echo "$COMMIT" | jq -r '.commit.message')
               TITLE=$(echo "$MESSAGE" | head -n 1)
-
-              # Commit 正文（去掉空行）
               BODY=$(echo "$MESSAGE" | tail -n +2 | sed '/^[[:space:]]*$/d')
 
               AUTHOR=$(echo "$COMMIT" | jq -r '
@@ -134,22 +120,17 @@ jobs:
 
               DATE=$(echo "$COMMIT" | jq -r '.commit.author.date')
               SHORT_SHA="${SHA:0:7}"
-
               URL="https://github.com/${REPO}/commit/${SHA}"
 
-              # ==========================================================
-              # Telegram 消息（支持 HTML，保留换行）
-              # ==========================================================
-
               TEXT="🔔 <b>GitHub Commit</b>
-                
+
                 📦 <b>${NAME}</b>
                 👤 ${AUTHOR}
                 🕐 ${DATE}
                 🔑 <code>${SHORT_SHA}</code>
                 
                 <b>${TITLE}</b>"
-
+                
               if [ -n "$BODY" ]; then
                 TEXT="${TEXT}
 
@@ -160,9 +141,6 @@ jobs:
 
                 🔗 <a href=\"${URL}\">查看 Commit</a>"
 
-              # 压缩连续空格，但保留换行
-              TEXT=$(printf '%s\n' "$TEXT" | sed 's/^[[:space:]]*//')
-
               curl -fsSL \
                 -X POST \
                 "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
@@ -172,14 +150,9 @@ jobs:
 
               echo "✅ Notification sent: ${REPO} ${SHORT_SHA}"
 
-              # 如果只找到最新 Commit，则停止
-              if [ "$SHA" = "$LATEST_SHA" ]; then
-                break
-              fi
+            done < <(echo "$RESPONSE" | jq -c '.[]' | tac)
 
-            done
-
-            # 保存最新 Commit
+            # 更新本仓库最新的 SHA 到本地状态文件
             echo "$LATEST_SHA" > "$STATE_FILE"
 
           done
@@ -187,7 +160,7 @@ jobs:
       - name: Save commit state
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]"
 
           git add .state/
 
@@ -195,5 +168,5 @@ jobs:
             echo "✅ No state changes."
           else
             git commit -m "chore: update commit monitor state"
-            git push || true
+            git push
           fi
