@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout monitor repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # 注意：必须设置为 true，否则下面 git push 会报 Auth 失败或权限不足
           persist-credentials: true
