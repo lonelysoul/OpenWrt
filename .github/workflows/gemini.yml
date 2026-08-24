@@ -3,7 +3,7 @@ name: Monitor Repositories
 on:
   schedule:
     # 每 30 分钟运行一次（建议选择避开整点的偏移分钟数，如第 17 和 47 分钟，规避 GitHub 排队）
-    - cron: '17,47 * * * *'
+    - cron: "*/15 * * * *"
   workflow_dispatch: # 支持手动触发测试
 
 jobs:
