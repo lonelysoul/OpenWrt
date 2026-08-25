@@ -1,8 +1,6 @@
 name: Delete Old Actions
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '30 21 * * *'
 jobs:
   delete-runs:
     runs-on: ubuntu-latest
