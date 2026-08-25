@@ -1,0 +1,13 @@
+name: Delete Old Actions
+on:
+  schedule:
+    - cron: '0 0 * * *' # 每天午夜执行一次
+jobs:
+  delete-runs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: yanovation/delete-old-actions@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          days-ago: 0 # 保留最近30天的记录，其余删除
+          keep-latest: 0 # 无论多旧，总是保留最新的5条记录
