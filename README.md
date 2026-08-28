@@ -7,7 +7,6 @@
 	- kixdns
 	- ddns-go
 	- statistics
-    - honk
 
 **包含主题**：
 - luci-theme-argon
