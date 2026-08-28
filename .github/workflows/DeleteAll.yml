@@ -14,7 +14,7 @@ on:
 
 permissions:
   actions: write
-  releases: write
+  contents: write # 正确的权限名称，控制 Release 和 Git Tag
 
 jobs:
   cleanup:
@@ -26,13 +26,17 @@ jobs:
           KEEP_COUNT: ${{ github.event.inputs.keep_releases }}
         run: |
           echo "=== 开始清理 Releases，保留最新 ${KEEP_COUNT} 个 ==="
-          # 获取所有 release 的 tag 列表，按创建时间排序，跳过最新的 N 个
-          releases_to_delete=$(gh release list --repo ${{ github.repository }} --limit 1000 | awk -F'\t' '{print $3}' | tail -n +$((KEEP_COUNT + 1)))
+          # 获取所有 release 的 tag 列表，按创建时间降序，跳过最新的 N 个
+          releases_to_delete=$(gh release list --repo ${{ github.repository }} --limit 1000 | awk '{print $3}' | tail -n +$((KEEP_COUNT + 1)))
           
-          for tag in $releases_to_delete; do
-            echo "正在删除 Release: $tag"
-            gh release delete "$tag" --repo ${{ github.repository }} --cleanup-tag -y || true
-          done
+          if [ -z "$releases_to_delete" ]; then
+            echo "没有需要删除的 Release"
+          else
+            for tag in $releases_to_delete; do
+              echo "正在删除 Release 和 Tag: $tag"
+              gh release delete "$tag" --repo ${{ github.repository }} --cleanup-tag -y || true
+            done
+          fi
 
       - name: Delete Old Workflow Runs
         env:
@@ -43,7 +47,11 @@ jobs:
           # 获取当前仓库所有 run ID（按从新到旧排列），跳过最新的 N 个
           runs_to_delete=$(gh api repos/${{ github.repository }}/actions/runs --paginate -q '.workflow_runs[].id' | tail -n +$((KEEP_COUNT + 1)))
           
-          for run_id in $runs_to_delete; do
-            echo "正在删除 Run ID: $run_id"
-            gh api -X DELETE repos/${{ github.repository }}/actions/runs/$run_id || true
-          done
+          if [ -z "$runs_to_delete" ]; then
+            echo "没有需要删除的 Workflow Run"
+          else
+            for run_id in $runs_to_delete; do
+              echo "正在删除 Run ID: $run_id"
+              gh api -X DELETE repos/${{ github.repository }}/actions/runs/$run_id || true
+            done
+          fi
