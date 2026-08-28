@@ -6,7 +6,7 @@ on:
       keep_releases:
         description: '保留最新 Release 的数量'
         required: true
-        default: '1'
+        default: '3'
       keep_runs:
         description: '保留最新 Workflow Runs 的数量（最少为 1，以防报错）'
         required: true
