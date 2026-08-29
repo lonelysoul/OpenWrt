@@ -1,10 +1,10 @@
-name: Delete Old Actions and Releases
+name: Delete Old Actions, Releases and Tags
 
 on:
   workflow_dispatch:
     inputs:
       keep_releases:
-        description: '保留最新 Release 的数量'
+        description: '保留最新 Release 和 Tag 的数量'
         required: true
         default: '3'
       keep_runs:
@@ -20,25 +20,45 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete Old Releases
+      - name: Delete Old Releases and Associated Tags
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KEEP_COUNT: ${{ github.event.inputs.keep_releases }}
         run: |
           echo "=== 开始清理 Releases，保留最新 ${KEEP_COUNT} 个 ==="
           
-          # 使用 --json 准确提取所有 release 的 tag 列表
+          # 1. 获取所有 Release 的 tag 列表
           releases_json=$(gh release list --repo ${{ github.repository }} --limit 1000 --json tagName)
-          
-          # 计算要删除的数量并跳过最新的 KEEP_COUNT 个
           releases_to_delete=$(echo "$releases_json" | jq -r ".[${KEEP_COUNT}:][].tagName")
           
           if [ -z "$releases_to_delete" ]; then
             echo "没有需要删除的 Release"
           else
             for tag in $releases_to_delete; do
-              echo "正在删除 Release 和 Tag: $tag"
-              gh release delete "$tag" --repo ${{ github.repository }} --cleanup-tag -y || true
+              echo "正在删除 Release: $tag"
+              gh release delete "$tag" --repo ${{ github.repository }} -y || true
+              
+              echo "正在强制彻底删除远端 Git Tag: $tag"
+              gh api -X DELETE repos/${{ github.repository }}/git/refs/tags/$tag || true
+            done
+          fi
+
+      - name: Delete Orphan/Remaining Old Git Tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP_COUNT: ${{ github.event.inputs.keep_releases }}
+        run: |
+          echo "=== 检查并清理孤立的旧 Git Tags（保留最新的 ${KEEP_COUNT} 个 Tag）==="
+          
+          # 获取仓库中所有的 Git Tags（按创建/提交时间倒序排序）
+          tags_to_delete=$(gh api repos/${{ github.repository }}/tags --paginate -q '.[].name' | tail -n +$((KEEP_COUNT + 1)))
+          
+          if [ -z "$tags_to_delete" ]; then
+            echo "没有多余的 Git Tag 需要清理"
+          else
+            for tag in $tags_to_delete; do
+              echo "正在删除残留 Git Tag: $tag"
+              gh api -X DELETE repos/${{ github.repository }}/git/refs/tags/$tag || true
             done
           fi
 
