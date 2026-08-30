@@ -1,4 +1,3 @@
-
 **包含软件包**：
 - wireguard
 - openssh-sftp-server
@@ -7,6 +6,3 @@
 	- kixdns
 	- ddns-go
 	- statistics
-
-**包含主题**：
-- luci-theme-argon
