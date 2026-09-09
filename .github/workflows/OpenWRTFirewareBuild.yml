@@ -139,7 +139,7 @@ jobs:
         export FORCE_UNSAFE_CONFIGURE=1
         export MAKEFLAGS="-j$(($(nproc)+1))"
        
-        make -j3 || make -j1 V=s
+        make -j$(($(nproc)+1)) || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
         echo "===== ccache 编译统计 ====="
         ccache -s
