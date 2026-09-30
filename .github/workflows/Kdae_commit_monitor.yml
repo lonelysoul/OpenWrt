@@ -1,12 +1,15 @@
 name: Kdae Commit Monitor
 
 env:
-  REPO_URL: https://github.com/olicesx/dae.git
+  REPO_OWNER: olicesx
+  REPO_NAME: dae
   REPO_BRANCH: kdae
 
-"on":
+on:
   workflow_dispatch:
   schedule:
+    # 每小时第 25 分钟执行
+    # 北京时间 = UTC + 8
     - cron: "25 * * * *"
 
 jobs:
@@ -16,19 +19,41 @@ jobs:
 
     permissions:
       actions: write
-      contents: write
+      contents: read
 
     steps:
+      - name: Show Trigger Info
+        run: |
+          echo "========================================"
+          echo "Kdae Commit Monitor"
+          echo "========================================"
+          echo "Trigger : ${{ github.event_name }}"
+          echo "Run ID  : ${{ github.run_id }}"
+          echo "Branch  : ${{ github.ref_name }}"
+          echo "UTC     : $(date -u '+%Y-%m-%d %H:%M:%S')"
+          echo "Beijing : $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S')"
+          echo "Schedule: 25 * * * *"
+          echo "========================================"
+
       - name: Get Latest Kdae Commit
         id: getHash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" kdae-src
-          cd kdae-src
-          echo "commitHash=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          set -e
+
+          COMMIT_HASH="$(gh api \
+            "repos/${REPO_OWNER}/${REPO_NAME}/commits/${REPO_BRANCH}" \
+            --jq '.sha')"
+
+          echo "commitHash=${COMMIT_HASH}" >> "$GITHUB_OUTPUT"
+
+          echo "Latest Kdae commit:"
+          echo "${COMMIT_HASH}"
 
       - name: Check Kdae Commit Update
         id: cacheHash
-        uses: actions/cache@v6
+        uses: actions/cache@v4
         with:
           path: .commitHash
           key: KDAE-${{ env.REPO_BRANCH }}-${{ steps.getHash.outputs.commitHash }}
@@ -54,10 +79,11 @@ jobs:
           ✨ Kdae 代码已更新
           🛠️ 可进行新一轮 OpenWrt Kdae 编译"
 
-          curl -sS \
+          curl -fsS \
             -X POST \
-            -H "Content-Type: application/json" \
-            -d "{\"chat_id\":\"${TELEGRAM_CHAT_ID}\",\"text\":\"${MESSAGE}\"}" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MESSAGE}" \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
 
       - name: Notify Kdae Update via Bark
@@ -66,7 +92,7 @@ jobs:
           BARK_KEY: ${{ secrets.BARK_KEY }}
           COMMIT_HASH: ${{ steps.getHash.outputs.commitHash }}
         run: |
-          curl -G \
+          curl -fsS -G \
             --data-urlencode "title=Kdae 检测到新提交 🚀" \
             --data-urlencode "body=项目：olicesx/dae；分支：kdae；Commit：${COMMIT_HASH}；Kdae 代码已更新，可进行新一轮 OpenWrt Kdae 编译" \
             "https://api.day.app/${BARK_KEY}"
