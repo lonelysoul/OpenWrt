@@ -18,8 +18,6 @@ jobs:
       contents: write
 
     steps:
-
-      # 🔍 获取 Kdae 最新 Commit
       - name: Get Latest Kdae Commit
         id: getHash
         run: |
@@ -27,7 +25,6 @@ jobs:
           cd kdae-src
           echo "commitHash=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      # 🔄 检查 Kdae 是否有新提交
       - name: Check Kdae Commit Update
         id: cacheHash
         uses: actions/cache@v6
@@ -35,57 +32,47 @@ jobs:
           path: .commitHash
           key: KDAE-${{ env.REPO_BRANCH }}-${{ steps.getHash.outputs.commitHash }}
 
-      # 💾 保存最新 Kdae Commit
       - name: Save Latest Kdae Commit
         if: steps.cacheHash.outputs.cache-hit != 'true'
         run: |
           echo "${{ steps.getHash.outputs.commitHash }}" > .commitHash
 
-      # 📢 Telegram：Kdae 更新通知
       - name: Notify Kdae Update via Telegram
         if: steps.cacheHash.outputs.cache-hit != 'true'
         uses: actions/github-script@v9
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          COMMIT_HASH: ${{ steps.getHash.outputs.commitHash }}
         with:
           script: |
-            const token = process.env.TELEGRAM_BOT_TOKEN;
-            const chat = process.env.TELEGRAM_CHAT_ID;
-            const commit = '${{ steps.getHash.outputs.commitHash }}';
-
-            const msg = `🚀 Kdae 有新提交
+            const msg = `🚀 Kdae 检测到新提交
 
 📦 项目：olicesx/dae
 🌿 分支：kdae
-🔖 Commit：${commit}
+🔖 Commit：${process.env.COMMIT_HASH}
 
-✨ 检测到 Kdae 代码更新
-🛠️ 可准备进行新一轮 OpenWrt Kdae 编译。`;
+✨ Kdae 代码已更新
+🛠️ 可进行新一轮 OpenWrt Kdae 编译`;
 
-            await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'
               },
               body: JSON.stringify({
-                chat_id: chat,
+                chat_id: process.env.TELEGRAM_CHAT_ID,
                 text: msg
               })
             });
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
-      # 📢 Bark：Kdae 更新通知
       - name: Notify Kdae Update via Bark
         if: steps.cacheHash.outputs.cache-hit != 'true'
         env:
           BARK_KEY: ${{ secrets.BARK_KEY }}
           COMMIT_HASH: ${{ steps.getHash.outputs.commitHash }}
         run: |
-          curl --get \
+          curl -G \
             --data-urlencode "title=Kdae 检测到新提交 🚀" \
-            --data-urlencode "body=项目：olicesx/dae
-分支：kdae
-Commit：${COMMIT_HASH}
-
-已检测到 Kdae 代码更新，可准备进行新一轮 OpenWrt Kdae 编译。" \
+            --data-urlencode "body=项目：olicesx/dae；分支：kdae；Commit：${COMMIT_HASH}；Kdae 代码已更新，可进行新一轮 OpenWrt Kdae 编译" \
             "https://api.day.app/${BARK_KEY}"
