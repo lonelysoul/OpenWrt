@@ -4,15 +4,16 @@ env:
   REPO_URL: https://github.com/olicesx/dae.git
   REPO_BRANCH: kdae
 
-on:
+"on":
   workflow_dispatch:
   schedule:
-    - cron: '25 * * * *'
+    - cron: "25 * * * *"
 
 jobs:
   check:
     name: Check Kdae Updates
     runs-on: ubuntu-latest
+
     permissions:
       actions: write
       contents: write
@@ -39,32 +40,25 @@ jobs:
 
       - name: Notify Kdae Update via Telegram
         if: steps.cacheHash.outputs.cache-hit != 'true'
-        uses: actions/github-script@v9
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           COMMIT_HASH: ${{ steps.getHash.outputs.commitHash }}
-        with:
-          script: |
-            const msg = `🚀 Kdae 检测到新提交
+        run: |
+          MESSAGE="🚀 Kdae 检测到新提交
 
-📦 项目：olicesx/dae
-🌿 分支：kdae
-🔖 Commit：${process.env.COMMIT_HASH}
+          📦 项目：olicesx/dae
+          🌿 分支：kdae
+          🔖 Commit：${COMMIT_HASH}
 
-✨ Kdae 代码已更新
-🛠️ 可进行新一轮 OpenWrt Kdae 编译`;
+          ✨ Kdae 代码已更新
+          🛠️ 可进行新一轮 OpenWrt Kdae 编译"
 
-            await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                chat_id: process.env.TELEGRAM_CHAT_ID,
-                text: msg
-              })
-            });
+          curl -sS \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"${TELEGRAM_CHAT_ID}\",\"text\":\"${MESSAGE}\"}" \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
 
       - name: Notify Kdae Update via Bark
         if: steps.cacheHash.outputs.cache-hit != 'true'
