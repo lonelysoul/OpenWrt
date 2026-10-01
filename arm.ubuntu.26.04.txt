@@ -244,3 +244,111 @@ echo " 编译完成"
 echo "============================================================"
 
 *********************************************
+增加网络工具的脚本内容：
+#!/bin/bash
+set -e
+
+OPENWRT_DIR="$HOME/openwrt"
+
+cd "$OPENWRT_DIR"
+
+echo "==> OpenWrt directory: $PWD"
+
+cat > /tmp/openwrt-extra.config <<'EOF'
+CONFIG_BIND_ENABLE_DOH=y
+CONFIG_HTOP_LMSENSORS=y
+CONFIG_LIBCURL_COOKIES=y
+CONFIG_LIBCURL_FILE=y
+CONFIG_LIBCURL_FTP=y
+CONFIG_LIBCURL_HTTP=y
+CONFIG_LIBCURL_HTTP2=y
+CONFIG_LIBCURL_HTTP_AUTH=y
+CONFIG_LIBCURL_MBEDTLS=y
+CONFIG_LIBCURL_NO_SMB="!"
+CONFIG_LIBCURL_PROXY=y
+CONFIG_LIBCURL_UNIX_SOCKETS=y
+CONFIG_LIBCURL_ZLIB=y
+CONFIG_LIBNCURSES_TERMINFO=""
+CONFIG_OPENSSL_ENGINE=y
+CONFIG_OPENSSL_OPTIMIZE_SPEED=y
+CONFIG_OPENSSL_WITH_ASM=y
+CONFIG_OPENSSL_WITH_CHACHA_POLY1305=y
+CONFIG_OPENSSL_WITH_CMS=y
+CONFIG_OPENSSL_WITH_DEPRECATED=y
+CONFIG_OPENSSL_WITH_ERROR_MESSAGES=y
+CONFIG_OPENSSL_WITH_IDEA=y
+CONFIG_OPENSSL_WITH_MDC2=y
+CONFIG_OPENSSL_WITH_PSK=y
+CONFIG_OPENSSL_WITH_SEED=y
+CONFIG_OPENSSL_WITH_SRP=y
+CONFIG_OPENSSL_WITH_TLS13=y
+CONFIG_OPENSSL_WITH_WHIRLPOOL=y
+CONFIG_PACKAGE_bind-dig=y
+CONFIG_PACKAGE_bind-libs=y
+CONFIG_PACKAGE_curl=y
+CONFIG_PACKAGE_ethtool-full=y
+CONFIG_PACKAGE_htop=y
+CONFIG_PACKAGE_iftop=y
+CONFIG_PACKAGE_iperf3=y
+CONFIG_PACKAGE_kmod-netlink-diag=y
+CONFIG_PACKAGE_libatomic=y
+CONFIG_PACKAGE_libbpf=y
+CONFIG_PACKAGE_libcurl=y
+CONFIG_PACKAGE_libelf=y
+CONFIG_PACKAGE_libiperf3=y
+CONFIG_PACKAGE_libncurses=y
+CONFIG_PACKAGE_libnghttp2=y
+CONFIG_PACKAGE_libopenssl=y
+CONFIG_PACKAGE_libpcap=y
+CONFIG_PACKAGE_libpcre2=y
+CONFIG_PACKAGE_libstdcpp=y
+CONFIG_PACKAGE_liburcu=y
+CONFIG_PACKAGE_libuv=y
+CONFIG_PACKAGE_lsof=y
+CONFIG_PACKAGE_mtr-json=y
+CONFIG_PACKAGE_mtr-nojson=m
+CONFIG_PACKAGE_netcat=y
+CONFIG_PACKAGE_nmap=y
+CONFIG_PACKAGE_socat=y
+CONFIG_PACKAGE_ss=y
+CONFIG_PACKAGE_strace=y
+CONFIG_PACKAGE_tcpdump=y
+CONFIG_PACKAGE_terminfo=y
+CONFIG_PCRE2_JIT_ENABLED=y
+EOF
+
+echo
+echo "==> Updating .config ..."
+
+# 删除已有的同名配置
+while IFS='=' read -r key value; do
+    [ -z "$key" ] && continue
+    sed -i "/^${key}=.*/d" .config
+done < /tmp/openwrt-extra.config
+
+# 追加新的配置
+cat /tmp/openwrt-extra.config >> .config
+
+echo "==> Running make defconfig ..."
+make defconfig
+
+echo
+echo "==> Checking final configuration ..."
+echo
+
+while IFS='=' read -r key value; do
+    [ -z "$key" ] && continue
+
+    result=$(grep -E "^${key}=" .config || true)
+
+    if [ -n "$result" ]; then
+        echo "[OK]   $result"
+    else
+        echo "[MISS] $key"
+    fi
+done < /tmp/openwrt-extra.config
+
+echo
+echo "==> Done."
+
+*********************************************
