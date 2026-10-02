@@ -1,6 +1,5 @@
 name: OpenWrt Firmware Build (x86 Master)
 
-
 on:
   workflow_dispatch:
   repository_dispatch:

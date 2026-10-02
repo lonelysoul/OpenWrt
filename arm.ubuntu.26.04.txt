@@ -6,6 +6,7 @@ sudo apt install -y golang-go
 以上，arm版本的ubuntu26.04一次性完成一次性完成
 sudo apt install -y lld  ccache (不装也能过)
 *********************************************
+
 #!/bin/bash
 
 set -e
