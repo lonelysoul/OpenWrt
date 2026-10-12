@@ -5,232 +5,285 @@ sudo apt install -y clang llvm
 sudo apt install -y golang-go
 以上，arm版本的ubuntu26.04一次性完成一次性完成
 sudo apt install -y lld  ccache (不装也能过)
-*********************************************
-
-#!/bin/bash
+*********************************************#!/bin/bash
 
 set -e
 
 echo "============================================================"
-echo " OpenWrt 增量编译"
+echo " OpenWrt 编译流程"
 echo "============================================================"
 
+# ============================================================
 # 进入 OpenWrt 源码目录
+# ============================================================
+
 cd "$(dirname "$0")/openwrt"
 
 echo
 echo "============================================================"
-echo " 更新 OpenWrt"
+echo " 更新 OpenWrt 主源码"
 echo "============================================================"
 
 git pull
 
+# ============================================================
+# 添加第三方 Feed
+# ============================================================
+
 echo
 echo "============================================================"
-echo " 更新 luci-app-dae"
+echo " 配置第三方 Feeds"
 echo "============================================================"
 
-if [ -d "package/dae/.git" ]; then
-    cd package/dae
-    git pull
-    cd ../..
+FEEDS_CONFIG="feeds.conf.default"
+DDNSGO_FEED='src-git ddnsgo https://github.com/sirpdboy/luci-app-ddns-go.git'
+
+if grep -qxF "$DDNSGO_FEED" "$FEEDS_CONFIG"; then
+    echo "--> ddns-go Feed 已存在，跳过"
 else
-    rm -rf package/dae
-    git clone https://github.com/QiuSimons/luci-app-dae.git package/dae
+    echo "$DDNSGO_FEED" >> "$FEEDS_CONFIG"
+    echo "--> 已添加 ddns-go Feed"
+fi
+
+# ============================================================
+# Kernel 配置
+# ============================================================
+
+echo
+echo "============================================================"
+echo " 检查 Linux Kernel 配置"
+echo "============================================================"
+
+KERNEL_CONFIG="target/linux/x86/config-6.18"
+
+if [ ! -f "$KERNEL_CONFIG" ]; then
+    echo "❌ 未找到 Kernel 配置文件：$KERNEL_CONFIG"
+    echo "   请确认当前 OpenWrt 使用的是 Linux 6.18。"
+    exit 1
+fi
+
+echo "--> 检查：CONFIG_NETKIT=y"
+
+if grep -qxF 'CONFIG_NETKIT=y' "$KERNEL_CONFIG"; then
+    echo "  ✓ CONFIG_NETKIT=y 已存在，跳过"
+else
+    echo "CONFIG_NETKIT=y" >> "$KERNEL_CONFIG"
+    echo "  + 已添加 CONFIG_NETKIT=y"
+fi
+
+echo "--> 检查：CONFIG_X86_NATIVE_CPU"
+
+if grep -qE '^CONFIG_X86_NATIVE_CPU=|^# CONFIG_X86_NATIVE_CPU is not set$' "$KERNEL_CONFIG"; then
+    echo "  ✓ CONFIG_X86_NATIVE_CPU 已存在，跳过"
+else
+    echo "# CONFIG_X86_NATIVE_CPU is not set" >> "$KERNEL_CONFIG"
+    echo "  + 已添加 # CONFIG_X86_NATIVE_CPU is not set"
+fi
+
+echo "--> 检查：CONFIG_X86_SGX"
+
+if grep -qE '^CONFIG_X86_SGX=|^# CONFIG_X86_SGX is not set$' "$KERNEL_CONFIG"; then
+    echo "  ✓ CONFIG_X86_SGX 已存在，跳过"
+else
+    echo "# CONFIG_X86_SGX is not set" >> "$KERNEL_CONFIG"
+    echo "  + 已添加 # CONFIG_X86_SGX is not set"
 fi
 
 echo
+echo "--> 当前相关 Kernel 配置："
+
+grep -E \
+    '^CONFIG_NETKIT=|^CONFIG_X86_NATIVE_CPU=|^# CONFIG_X86_NATIVE_CPU is not set$|^CONFIG_X86_SGX=|^# CONFIG_X86_SGX is not set$' \
+    "$KERNEL_CONFIG" || true
+
+# ============================================================
+# 更新并安装 Feeds
+# ============================================================
+
+echo
 echo "============================================================"
-echo " 更新 feeds"
+echo " 更新与安装 Feeds"
 echo "============================================================"
 
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
+# ============================================================
+# v2ray-geodata
+# ============================================================
+
 echo
 echo "============================================================"
-echo " 下载源码与最新规则库"
+echo " 更新/拉取 v2ray-geodata"
+echo "============================================================"
+
+# 清理 feeds 中可能存在的同名 package
+rm -rf feeds/packages/net/v2ray-geodata
+
+# 使用指定版本的 v2ray-geodata package
+rm -rf package/v2ray-geodata
+
+git clone \
+    https://github.com/lonelysoul/v2ray-geodata \
+    package/v2ray-geodata
+
+echo "--> v2ray-geodata 已准备完成"
+
+# ============================================================
+# KixDNS
+# ============================================================
+
+echo
+echo "============================================================"
+echo " 更新/拉取 KixDNS"
+echo "============================================================"
+
+KIXDNS_DIR="package/kixdns"
+
+if [ -d "$KIXDNS_DIR/.git" ]; then
+
+    echo "--> 检测到已存在 $KIXDNS_DIR，正在更新..."
+
+    cd "$KIXDNS_DIR"
+
+    # 放弃上一次脚本留下的本地修改，避免 git pull 冲突
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "--> 检测到本地修改，正在恢复..."
+        git reset --hard HEAD
+    fi
+
+    git pull
+
+    cd ../..
+
+else
+
+    echo "--> 未检测到 $KIXDNS_DIR，正在克隆..."
+
+    rm -rf "$KIXDNS_DIR"
+
+    git clone \
+        https://github.com/JohnsonRan/luci-app-kixdns.git \
+        "$KIXDNS_DIR"
+
+fi
+
+echo "--> KixDNS 已准备完成"
+
+# ============================================================
+# luci-app-dae
+# ============================================================
+
+echo
+echo "============================================================"
+echo " 更新/拉取 luci-app-dae"
+echo "============================================================"
+
+DAE_DIR="package/dae"
+DAE_MAKEFILE="$DAE_DIR/dae/Makefile"
+
+if [ -d "$DAE_DIR/.git" ]; then
+
+    echo "--> 检测到已存在 $DAE_DIR，正在更新..."
+
+    cd "$DAE_DIR"
+
+    # 放弃上一次脚本留下的本地修改，避免 git pull 冲突
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "--> 检测到本地修改，正在恢复..."
+        git reset --hard HEAD
+    fi
+
+    git pull
+
+    cd ../..
+
+else
+
+    echo "--> 未检测到 $DAE_DIR，正在克隆..."
+
+    rm -rf "$DAE_DIR"
+
+    git clone \
+        https://github.com/QiuSimons/luci-app-dae.git \
+        "$DAE_DIR"
+
+fi
+
+# ============================================================
+# 设置 DAE AMD64 v3 / AVX2
+# ============================================================
+
+echo
+echo "============================================================"
+echo " 设置 dae 为 AMD64 v3 / AVX2 编译"
+echo "============================================================"
+
+if [ ! -f "$DAE_MAKEFILE" ]; then
+    echo "❌ 未找到 dae Makefile：$DAE_MAKEFILE"
+    exit 1
+fi
+
+if grep -qE '^GO_AMD64[[:space:]]*:?=[[:space:]]*v3[[:space:]]*$' "$DAE_MAKEFILE"; then
+
+    echo "--> GO_AMD64=v3 已存在，跳过修改"
+
+else
+
+    # 如果存在其他 GO_AMD64 设置，先删除
+    sed -i '/^GO_AMD64[[:space:]]*:?=/d' "$DAE_MAKEFILE"
+
+    # 放在 GO_PKG_BUILD_VARS 前面
+    sed -i '/^GO_PKG_BUILD_VARS+=/i GO_AMD64:=v3' "$DAE_MAKEFILE"
+
+    echo "--> 已设置 GO_AMD64:=v3"
+
+fi
+
+echo
+echo "--> 当前 dae Go AMD64 配置："
+
+grep -n -E '^GO_AMD64[[:space:]]*:?=' "$DAE_MAKEFILE" || true
+
+# ============================================================
+# 检查并处理 .config
+# ============================================================
+
+echo
+echo "============================================================"
+echo " 检查并处理配置文件 (.config)"
+echo "============================================================"
+
+if [ ! -f ".config" ]; then
+
+    echo "--> 未检测到 .config 文件"
+    echo "--> 启动 menuconfig 进行手动配置..."
+
+    make menuconfig
+
+else
+
+    echo "--> 检测到已有 .config 文件"
+    echo "--> 执行 defconfig 补全依赖..."
+
+    make defconfig
+
+fi
+
+# ============================================================
+# 下载源码
+# ============================================================
+
+echo
+echo "============================================================"
+echo " 下载源码"
 echo "============================================================"
 
 make download -j$(nproc) V=s
 
-# ------------------------------------------------------------------
-# 1. 下载最新 GeoIP / GeoSite 打入固件（解决刷机/开机无规则的死锁问题）
-# ------------------------------------------------------------------
-echo "--> [1/3] 预置最新的 GeoIP / GeoSite 数据库到固件..."
-mkdir -p files/usr/share/v2ray
-rm -f files/usr/share/v2ray/geoip.dat files/usr/share/v2ray/geosite.dat
-
-wget -q --no-check-certificate -O files/usr/share/v2ray/geoip.dat https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
-wget -q --no-check-certificate -O files/usr/share/v2ray/geosite.dat https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
-echo "--> 规则数据库打包成功！"
-
-# ------------------------------------------------------------------
-# 2. 将 update-v2ray-rules 脚本写入 files/usr/bin/
-# ------------------------------------------------------------------
-echo "--> [2/3] 写入 /usr/bin/update-v2ray-rules 脚本..."
-mkdir -p files/usr/bin
-
-cat << 'EOF' > files/usr/bin/update-v2ray-rules
-#!/bin/sh
-
-TARGET_DIR="/usr/share/v2ray"
-TMP_DIR="/tmp/v2ray-rules"
-
-BASE_URL="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download"
-
-GEOIP="geoip.dat"
-GEOSITE="geosite.dat"
-
-log() {
-    echo "[v2ray-rules] $*"
-}
-
-download() {
-    URL="$1"
-    OUTPUT="$2"
-
-    if command -v uclient-fetch >/dev/null 2>&1; then
-        uclient-fetch \
-            -q \
-            -O "$OUTPUT" \
-            "$URL"
-    elif command -v wget >/dev/null 2>&1; then
-        wget \
-            -q \
-            -O "$OUTPUT" \
-            "$URL"
-    else
-        log "ERROR: uclient-fetch/wget not found"
-        return 1
-    fi
-}
-
-verify_sha256() {
-    FILE="$1"
-    SUM="$2"
-
-    if command -v sha256sum >/dev/null 2>&1; then
-        EXPECTED="$(awk '{print $1}' "$SUM")"
-        ACTUAL="$(sha256sum "$FILE" | awk '{print $1}')"
-
-        if [ "$EXPECTED" != "$ACTUAL" ]; then
-            log "ERROR: SHA256 mismatch: $FILE"
-            log "Expected: $EXPECTED"
-            log "Actual:   $ACTUAL"
-            return 1
-        fi
-
-        log "SHA256 OK: $FILE"
-        return 0
-    fi
-
-    log "WARNING: sha256sum not found, skip verification"
-    return 0
-}
-
-mkdir -p "$TARGET_DIR"
-
-rm -rf "$TMP_DIR"
-mkdir -p "$TMP_DIR"
-
-log "Starting update..."
-
-#
-# geoip.dat
-#
-
-log "Downloading geoip.dat..."
-
-download \
-    "$BASE_URL/$GEOIP" \
-    "$TMP_DIR/$GEOIP" || exit 1
-
-download \
-    "$BASE_URL/$GEOIP.sha256sum" \
-    "$TMP_DIR/$GEOIP.sha256sum" || exit 1
-
-[ -s "$TMP_DIR/$GEOIP" ] || {
-    log "ERROR: geoip.dat is empty"
-    exit 1
-}
-
-verify_sha256 \
-    "$TMP_DIR/$GEOIP" \
-    "$TMP_DIR/$GEOIP.sha256sum" || exit 1
-
-
-#
-# geosite.dat
-#
-
-log "Downloading geosite.dat..."
-
-download \
-    "$BASE_URL/$GEOSITE" \
-    "$TMP_DIR/$GEOSITE" || exit 1
-
-download \
-    "$BASE_URL/$GEOSITE.sha256sum" \
-    "$TMP_DIR/$GEOSITE.sha256sum" || exit 1
-
-[ -s "$TMP_DIR/$GEOSITE" ] || {
-    log "ERROR: geosite.dat is empty"
-    exit 1
-}
-
-verify_sha256 \
-    "$TMP_DIR/$GEOSITE" \
-    "$TMP_DIR/$GEOSITE.sha256sum" || exit 1
-
-
-#
-# Replace
-#
-
-log "Installing new rule files..."
-
-mv -f "$TMP_DIR/$GEOIP" "$TARGET_DIR/$GEOIP"
-mv -f "$TMP_DIR/$GEOSITE" "$TARGET_DIR/$GEOSITE"
-
-# 如果 dae 正在运行，自动重载规则
-if pgrep dae >/dev/null 2>&1; then
-    log "Reloading dae..."
-    /etc/init.d/dae reload 2>/dev/null || true
-fi
-
-rm -rf "$TMP_DIR"
-
-log "Update completed."
-
-ls -lh \
-    "$TARGET_DIR/$GEOIP" \
-    "$TARGET_DIR/$GEOSITE"
-EOF
-
-chmod +x files/usr/bin/update-v2ray-rules
-
-# ------------------------------------------------------------------
-# 3. 注入 UCI 初始化脚本（首次开机安全添加定时任务）
-# ------------------------------------------------------------------
-echo "--> [3/3] 配置首次开机定时任务 (Cron)..."
-mkdir -p files/etc/uci-defaults
-
-cat << 'EOF' > files/etc/uci-defaults/99-v2ray-rules-cron
-#!/bin/sh
-
-CRON_CMD="0 3 * * 0 /usr/bin/update-v2ray-rules >/dev/null 2>&1"
-
-# 避免重复添加
-if ! grep -q "/usr/bin/update-v2ray-rules" /etc/crontabs/root 2>/dev/null; then
-    echo "$CRON_CMD" >> /etc/crontabs/root
-    /etc/init.d/cron restart 2>/dev/null || true
-fi
-
-exit 0
-EOF
-
-chmod +x files/etc/uci-defaults/99-v2ray-rules-cron
+# ============================================================
+# 开始编译
+# ============================================================
 
 echo
 echo "============================================================"
@@ -238,6 +291,10 @@ echo " 开始编译"
 echo "============================================================"
 
 time make -j$(nproc) V=s
+
+# ============================================================
+# 编译完成
+# ============================================================
 
 echo
 echo "============================================================"
