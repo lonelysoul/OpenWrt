@@ -97,8 +97,13 @@
       "matchers": [
         {
           "type": "geo_site",
-          "operator": "and",
+          "operator": "or",
           "value": "cn"
+        },
+        {
+          "type": "domain_suffix",
+          "operator": "or",
+          "value": "up366.cn"
         }
       ],
       "matcher_operator": "and"
