@@ -1,0 +1,263 @@
+{
+  "version": "1.0",
+  "settings": {
+    "min_ttl": 0,
+    "bind_udp": "0.0.0.0:5353",
+    "bind_tcp": "0.0.0.0:5353",
+    "doh_path": "/dns-query",
+    "default_upstream": "8.8.8.8:53",
+    "upstream_timeout_ms": 2000,
+    "request_timeout_ms": null,
+    "response_jump_limit": 10,
+    "udp_pool_size": 64,
+    "tcp_pool_size": 64,
+    "doh_pool_size": 8,
+    "dot_pool_size": 64,
+    "doq_pool_size": 16,
+    "tcp_health_check_error_threshold": 3,
+    "tcp_connection_max_age_seconds": 300,
+    "tcp_connection_idle_timeout_seconds": 60,
+    "doq_connection_idle_timeout_seconds": 60,
+    "doq_keepalive_interval_ms": 15000,
+    "doq_enable_0rtt": true,
+    "flow_control_initial_permits": 500,
+    "flow_control_min_permits": 100,
+    "flow_control_max_permits": 800,
+    "flow_control_latency_threshold_ms": 100,
+    "flow_control_adjustment_interval_secs": 5,
+    "cache_capacity": 10000,
+    "cache_max_ttl": 86400,
+    "dashmap_shards": 0,
+    "cache_background_refresh": true,
+    "cache_refresh_threshold_percent": 10,
+    "cache_refresh_min_ttl": 5,
+    "serve_stale": false,
+    "serve_stale_ttl": 30,
+    "serve_stale_expire_ttl": 86400,
+    "serve_stale_ttl_reset": true,
+    "serve_stale_client_timeout_ms": 0,
+    "flow_control_enabled": false,
+    "geoip_db_path": "",
+    "geoip_dat_path": "/usr/share/v2ray/geoip.dat",
+    "geoip_auto_convert": true,
+    "geoip_filter_countries": [
+      "cn"
+    ],
+    "enable_tcp_fallback": true,
+    "geosite_enabled": true,
+    "geosite_data_paths": [
+      "/usr/share/v2ray/geosite.dat"
+    ]
+  },
+  "pipeline_select": [
+    {
+      "pipeline": "Local",
+      "matchers": [
+        {
+          "type": "geo_site",
+          "operator": "and",
+          "value": "private"
+        },
+        {
+          "type": "domain_suffix",
+          "operator": "or",
+          "value": ".lan"
+        },
+        {
+          "type": "domain_suffix",
+          "operator": "or",
+          "value": ".local"
+        },
+        {
+          "type": "domain_suffix",
+          "operator": "or",
+          "value": ".168.192.in-addr.arpa"
+        }
+      ],
+      "matcher_operator": "and"
+    },
+    {
+      "pipeline": "广告",
+      "matchers": [
+        {
+          "type": "geo_site",
+          "operator": "or",
+          "value": "category-ads-all"
+        },
+        {
+          "type": "domain_suffix",
+          "operator": "or",
+          "value": "api.miwifi.com"
+        }
+      ],
+      "matcher_operator": "and"
+    },
+    {
+      "pipeline": "中国",
+      "matchers": [
+        {
+          "type": "geo_site",
+          "operator": "and",
+          "value": "cn"
+        }
+      ],
+      "matcher_operator": "and"
+    },
+    {
+      "pipeline": "外国",
+      "matchers": [
+        {
+          "type": "geo_site_not",
+          "operator": "and",
+          "value": "cn"
+        }
+      ],
+      "matcher_operator": "and"
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "Local",
+      "rules": [
+        {
+          "name": "本地",
+          "matchers": [
+            {
+              "type": "geo_site",
+              "operator": "and",
+              "value": "private"
+            },
+            {
+              "type": "domain_suffix",
+              "operator": "or",
+              "value": ".lan"
+            },
+            {
+              "type": "domain_suffix",
+              "operator": "or",
+              "value": ".local"
+            },
+            {
+              "type": "domain_suffix",
+              "operator": "or",
+              "value": "168.192.in-addr.arpa"
+            }
+          ],
+          "matcher_operator": "and",
+          "actions": [
+            {
+              "type": "log",
+              "level": "info"
+            },
+            {
+              "type": "forward",
+              "upstream": "udp://127.0.0.1:53",
+              "transport": "udp"
+            }
+          ],
+          "response_matchers": [],
+          "response_matcher_operator": "and",
+          "response_actions_on_match": [],
+          "response_actions_on_miss": []
+        }
+      ]
+    },
+    {
+      "id": "中国",
+      "rules": [
+        {
+          "name": "中国域名",
+          "matchers": [
+            {
+              "type": "geo_site",
+              "operator": "and",
+              "value": "cn"
+            }
+          ],
+          "matcher_operator": "and",
+          "actions": [
+            {
+              "type": "log",
+              "level": "info"
+            },
+            {
+              "type": "forward",
+              "upstream": "quic://dns.alidns.com",
+              "transport": "doq"
+            }
+          ],
+          "response_matchers": [],
+          "response_matcher_operator": "and",
+          "response_actions_on_match": [],
+          "response_actions_on_miss": []
+        }
+      ]
+    },
+    {
+      "id": "广告",
+      "rules": [
+        {
+          "name": "广告",
+          "matchers": [
+            {
+              "type": "geo_site",
+              "operator": "and",
+              "value": "category-ads-all"
+            },
+            {
+              "type": "domain_suffix",
+              "operator": "or",
+              "value": "api.miwifi.com"
+            }
+          ],
+          "matcher_operator": "and",
+          "actions": [
+            {
+              "type": "log",
+              "level": "info"
+            },
+            {
+              "type": "static_response",
+              "rcode": "NXDOMAIN"
+            }
+          ],
+          "response_matchers": [],
+          "response_matcher_operator": "and",
+          "response_actions_on_match": [],
+          "response_actions_on_miss": []
+        }
+      ]
+    },
+    {
+      "id": "外国",
+      "rules": [
+        {
+          "name": "非国内域名",
+          "matchers": [
+            {
+              "type": "geo_site_not",
+              "operator": "and",
+              "value": "cn"
+            }
+          ],
+          "matcher_operator": "and",
+          "actions": [
+            {
+              "type": "log",
+              "level": "info"
+            },
+            {
+              "type": "forward",
+              "upstream": "https://dns.google/dns-query",
+              "transport": "doh"
+            }
+          ],
+          "response_matchers": [],
+          "response_matcher_operator": "and",
+          "response_actions_on_match": [],
+          "response_actions_on_miss": []
+        }
+      ]
+    }
+  ]
+}
