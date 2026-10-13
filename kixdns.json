@@ -37,7 +37,7 @@
     "serve_stale_ttl_reset": true,
     "serve_stale_client_timeout_ms": 0,
     "flow_control_enabled": false,
-    "geoip_db_path": "",
+    "geoip_db_path": "/etc/kixdns/GeoLite2-Country.mmdb",
     "geoip_dat_path": "/usr/share/v2ray/geoip.dat",
     "geoip_auto_convert": true,
     "geoip_filter_countries": [
@@ -99,11 +99,6 @@
           "type": "geo_site",
           "operator": "or",
           "value": "cn"
-        },
-        {
-          "type": "domain_suffix",
-          "operator": "or",
-          "value": "up366.cn"
         }
       ],
       "matcher_operator": "and"
@@ -257,9 +252,27 @@
               "transport": "doh"
             }
           ],
-          "response_matchers": [],
+          "response_matchers": [
+            {
+              "type": "response_answer_ip_geoip_country",
+              "operator": "and",
+              "country_codes": [
+                "cn"
+              ]
+            }
+          ],
           "response_matcher_operator": "and",
-          "response_actions_on_match": [],
+          "response_actions_on_match": [
+            {
+              "type": "log",
+              "level": "info"
+            },
+            {
+              "type": "forward",
+              "upstream": "quic://dns.alidns.com",
+              "transport": "doq"
+            }
+          ],
           "response_actions_on_miss": []
         }
       ]
