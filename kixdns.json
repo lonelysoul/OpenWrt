@@ -278,11 +278,35 @@
               "level": "info"
             },
             {
+              "type": "jump_to_pipeline",
+              "pipeline": "中国IP回退"
+            }
+          ],
+          "response_actions_on_miss": []
+        }
+      ]
+    },
+    {
+      "id": "中国IP回退",
+      "rules": [
+        {
+          "name": "中国IP回退",
+          "matchers": [],
+          "matcher_operator": "and",
+          "actions": [
+            {
+              "type": "log",
+              "level": "info"
+            },
+            {
               "type": "forward",
               "upstream": "quic://dns.alidns.com",
               "transport": "doq"
             }
           ],
+          "response_matchers": [],
+          "response_matcher_operator": "and",
+          "response_actions_on_match": [],
           "response_actions_on_miss": []
         }
       ]
