@@ -103,7 +103,7 @@
       "matcher_operator": "and"
     },
     {
-      "pipeline": "GeoSite:cn",
+      "pipeline": "GeoSite:CN",
       "matchers": [
         {
           "type": "geo_site",
@@ -178,10 +178,10 @@
       ]
     },
     {
-      "id": "GeoSite:cn",
+      "id": "GeoSite:CN",
       "rules": [
         {
-          "name": "GeoSite:cn",
+          "name": "GeoSite:CN",
           "matchers": [
             {
               "type": "geo_site",
