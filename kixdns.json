@@ -19,7 +19,7 @@
     "tcp_connection_idle_timeout_seconds": 60,
     "doq_connection_idle_timeout_seconds": 60,
     "doq_keepalive_interval_ms": 15000,
-    "doq_enable_0rtt": true,
+    "doq_enable_0rtt": false,
     "flow_control_initial_permits": 500,
     "flow_control_min_permits": 100,
     "flow_control_max_permits": 800,
@@ -72,12 +72,22 @@
           "type": "domain_suffix",
           "operator": "or",
           "value": ".168.192.in-addr.arpa"
+        },
+        {
+          "type": "domain_suffix",
+          "operator": "or",
+          "value": "home.arpa"
+        },
+        {
+          "type": "domain_suffix",
+          "operator": "or",
+          "value": "ip6.arpa"
         }
       ],
       "matcher_operator": "and"
     },
     {
-      "pipeline": "广告",
+      "pipeline": "Category-ADS-All",
       "matchers": [
         {
           "type": "geo_site",
@@ -93,7 +103,7 @@
       "matcher_operator": "and"
     },
     {
-      "pipeline": "中国",
+      "pipeline": "GeoSite:cn",
       "matchers": [
         {
           "type": "geo_site",
@@ -109,7 +119,7 @@
       "matcher_operator": "and"
     },
     {
-      "pipeline": "外国",
+      "pipeline": "NON_CN",
       "matchers": [
         {
           "type": "geo_site_not",
@@ -125,7 +135,7 @@
       "id": "Local",
       "rules": [
         {
-          "name": "本地",
+          "name": "Local",
           "matchers": [
             {
               "type": "geo_site",
@@ -168,10 +178,10 @@
       ]
     },
     {
-      "id": "中国",
+      "id": "GeoSite:cn",
       "rules": [
         {
-          "name": "中国域名",
+          "name": "GeoSite:cn",
           "matchers": [
             {
               "type": "geo_site",
@@ -192,8 +202,8 @@
             },
             {
               "type": "forward",
-              "upstream": "doq://dns.alidns.com",
-              "transport": "doq"
+              "upstream": "doh://dns.alidns.com/dns-query",
+              "transport": "doh"
             }
           ],
           "response_matchers": [],
@@ -204,10 +214,10 @@
       ]
     },
     {
-      "id": "广告",
+      "id": "Category-ADS-All",
       "rules": [
         {
-          "name": "广告",
+          "name": "Category-ADS-All",
           "matchers": [
             {
               "type": "geo_site",
@@ -239,10 +249,10 @@
       ]
     },
     {
-      "id": "外国",
+      "id": "NON_CN",
       "rules": [
         {
-          "name": "非国内域名",
+          "name": "NON_CN",
           "matchers": [
             {
               "type": "geo_site_not",
@@ -279,7 +289,7 @@
             },
             {
               "type": "jump_to_pipeline",
-              "pipeline": "中国IP回退"
+              "pipeline": "CN_Fallback"
             }
           ],
           "response_actions_on_miss": []
@@ -287,10 +297,10 @@
       ]
     },
     {
-      "id": "中国IP回退",
+      "id": "CN_Fallback",
       "rules": [
         {
-          "name": "中国IP回退",
+          "name": "CN_Fallback",
           "matchers": [],
           "matcher_operator": "and",
           "actions": [
@@ -300,8 +310,8 @@
             },
             {
               "type": "forward",
-              "upstream": "doq://dns.alidns.com",
-              "transport": "doq"
+              "upstream": "doh://dns.alidns.com/dns-query",
+              "transport": "doh"
             }
           ],
           "response_matchers": [],
